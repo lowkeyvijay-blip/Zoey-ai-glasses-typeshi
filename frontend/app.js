@@ -102,6 +102,36 @@ scene.add(grid);
 
 
 // ─────────────────────────────────────────────
+// Hand cursors (V1.6)
+// ─────────────────────────────────────────────
+
+const cursorGeometry = new THREE.SphereGeometry(
+    0.05,
+    16,
+    16
+);
+
+const leftCursorMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff6666,
+    roughness: 0.5
+});
+
+const rightCursorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x6666ff,
+    roughness: 0.5
+});
+
+const leftCursor = new THREE.Mesh(cursorGeometry, leftCursorMaterial);
+const rightCursor = new THREE.Mesh(cursorGeometry, rightCursorMaterial);
+
+leftCursor.visible = false;
+rightCursor.visible = false;
+
+scene.add(leftCursor);
+scene.add(rightCursor);
+
+
+// ─────────────────────────────────────────────
 // HUD Elements
 // ─────────────────────────────────────────────
 
@@ -124,6 +154,7 @@ const eventsElement =
 
 const COLOR_IDLE = 0x00aaff;
 const COLOR_GRABBED = 0x00ffcc;
+const COLOR_TWO_HAND = 0xffaa00;
 const COLOR_FLASH = 0xffff00;
 
 let flashTimer = 0;
@@ -136,7 +167,14 @@ const FLASH_DURATION = 8;
 
 let targetX = 0;
 let targetY = 0;
+let targetScale = 1.0;
+let targetRotation = 0;
 let interactionState = "IDLE";
+
+let leftHandPos = null;
+let rightHandPos = null;
+let leftState = "IDLE";
+let rightState = "IDLE";
 
 
 // ─────────────────────────────────────────────
@@ -182,12 +220,15 @@ function connect() {
         const data =
             JSON.parse(event.data);
 
-        if (data.gesture) {
+        // Per-hand gesture display
 
-            gestureElement.textContent =
-                `Gesture: ${data.gesture}`;
+        const parts = [];
+        if (data.left_state && data.left_state !== "IDLE") {
+            parts.push(`L:${data.left_state}`);
         }
-
+        if (data.right_state && data.right_state !== "IDLE") {
+            parts.push(`R:${data.right_state}`);
+        }
 
         if (data.interaction_state) {
 
@@ -195,11 +236,11 @@ function connect() {
                 data.interaction_state;
 
             interactionElement.textContent =
-                `State: ${interactionState}`;
+                `State: ${interactionState}` + (parts.length > 0 ? ` (${parts.join(", ")})` : "");
         }
 
 
-        // Backend-authoritative sphere position.
+        // Backend-authoritative sphere position + scale + rotation
 
         if (
             data.sphere_x !== undefined &&
@@ -210,13 +251,45 @@ function connect() {
             targetY = data.sphere_y;
         }
 
+        if (data.sphere_scale !== undefined) {
+            targetScale = data.sphere_scale;
+        }
+
+        if (data.sphere_rotation !== undefined) {
+            targetRotation = data.sphere_rotation;
+        }
+
+
+        // Hand cursors
+
+        if (data.left_hand) {
+            leftHandPos = data.left_hand;
+            leftState = data.left_state;
+            leftCursor.visible = true;
+        } else {
+            leftHandPos = null;
+            leftCursor.visible = false;
+        }
+
+        if (data.right_hand) {
+            rightHandPos = data.right_hand;
+            rightState = data.right_state;
+            rightCursor.visible = true;
+        } else {
+            rightHandPos = null;
+            rightCursor.visible = false;
+        }
+
 
         // Interaction events
 
         if (data.events && data.events.length > 0) {
 
             const names = data.events.map(
-                (e) => e.type
+                (e) => {
+                    const label = e.hand_label ? `[${e.hand_label}]` : "";
+                    return `${label}${e.type}`;
+                }
             );
 
             eventsElement.textContent =
@@ -263,16 +336,34 @@ function animate() {
     sphere.position.y +=
         (targetY - sphere.position.y) * 0.15;
 
+    // Interpolate scale
+
+    const currentScale = sphere.scale.x;
+    const newScale = currentScale + (targetScale - currentScale) * 0.15;
+    sphere.scale.set(newScale, newScale, newScale);
+
+    // Apply two-hand rotation
+
+    if (interactionState === "TWO_HAND") {
+        sphere.rotation.z +=
+            (targetRotation - sphere.rotation.z) * 0.15;
+    }
+
 
     // Sphere color feedback:
     //   - IDLE: blue
     //   - GRABBED: cyan-green
+    //   - TWO_HAND: orange
     //   - Flash (click): brief yellow override
 
     if (flashTimer > 0) {
 
         sphere.material.color.setHex(COLOR_FLASH);
         flashTimer--;
+
+    } else if (interactionState === "TWO_HAND") {
+
+        sphere.material.color.setHex(COLOR_TWO_HAND);
 
     } else if (interactionState === "GRABBED") {
 
@@ -285,14 +376,28 @@ function animate() {
 
 
     // Auto-rotate only when IDLE.
-    // Stop rotation during GRABBED for stability.
+    // Stop rotation during GRABBED or TWO_HAND for stability.
 
-    if (interactionState !== "GRABBED") {
+    if (interactionState === "IDLE") {
 
         sphere.rotation.x += 0.003;
         sphere.rotation.y += 0.005;
 
     }
+
+
+    // Hand cursors: map normalized coords to scene space
+
+    if (leftHandPos) {
+        leftCursor.position.x = (leftHandPos.x - 0.5) * 6;
+        leftCursor.position.y = -(leftHandPos.y - 0.5) * 4;
+    }
+
+    if (rightHandPos) {
+        rightCursor.position.x = (rightHandPos.x - 0.5) * 6;
+        rightCursor.position.y = -(rightHandPos.y - 0.5) * 4;
+    }
+
 
     renderer.render(
         scene,
