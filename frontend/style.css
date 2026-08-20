@@ -28,7 +28,8 @@ canvas {
 }
 
 #status,
-#gesture {
+#gesture,
+#interaction {
     margin-top: 8px;
     font-size: 14px;
     opacity: 0.8;

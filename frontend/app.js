@@ -102,7 +102,7 @@ scene.add(grid);
 
 
 // ─────────────────────────────────────────────
-// WebSocket
+// HUD Elements
 // ─────────────────────────────────────────────
 
 const statusElement =
@@ -111,6 +111,22 @@ const statusElement =
 const gestureElement =
     document.getElementById("gesture");
 
+const interactionElement =
+    document.getElementById("interaction");
+
+
+// ─────────────────────────────────────────────
+// Authoritative state from backend
+// ─────────────────────────────────────────────
+
+let targetX = 0;
+let targetY = 0;
+let interactionState = "IDLE";
+
+
+// ─────────────────────────────────────────────
+// WebSocket
+// ─────────────────────────────────────────────
 
 let socket;
 
@@ -158,28 +174,26 @@ function connect() {
         }
 
 
+        if (data.interaction_state) {
+
+            interactionState =
+                data.interaction_state;
+
+            interactionElement.textContent =
+                `State: ${interactionState}`;
+        }
+
+
+        // Backend-authoritative sphere position.
+        // Backend sends world-space coordinates directly.
+
         if (
-            data.x !== undefined &&
-            data.y !== undefined
+            data.sphere_x !== undefined &&
+            data.sphere_y !== undefined
         ) {
 
-            // Convert normalized camera coordinates
-            // into our 3D coordinate system.
-
-            const targetX =
-                (data.x - 0.5) * 6;
-
-            const targetY =
-                -(data.y - 0.5) * 4;
-
-
-            // Smooth movement
-
-            sphere.position.x +=
-                (targetX - sphere.position.x) * 0.15;
-
-            sphere.position.y +=
-                (targetY - sphere.position.y) * 0.15;
+            targetX = data.sphere_x;
+            targetY = data.sphere_y;
         }
     };
 }
@@ -197,8 +211,24 @@ function animate() {
         animate
     );
 
-    sphere.rotation.x += 0.003;
-    sphere.rotation.y += 0.005;
+    // Interpolate toward backend-authoritative position
+
+    sphere.position.x +=
+        (targetX - sphere.position.x) * 0.15;
+
+    sphere.position.y +=
+        (targetY - sphere.position.y) * 0.15;
+
+
+    // Auto-rotate only when IDLE.
+    // Stop rotation during GRABBED for stability.
+
+    if (interactionState !== "GRABBED") {
+
+        sphere.rotation.x += 0.003;
+        sphere.rotation.y += 0.005;
+
+    }
 
     renderer.render(
         scene,
