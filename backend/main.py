@@ -3,8 +3,9 @@
 FastAPI application with WebSocket endpoint for real-time
 hand tracking and spatial interaction.
 
-V1.4: Uses CameraManager, per-session InteractionController,
-      and sends authoritative sphere_position to frontend.
+V1.5: Uses CameraManager, per-session InteractionController,
+      EventDetector, and sends authoritative state + events
+      to frontend.
 """
 
 import asyncio
@@ -23,6 +24,7 @@ from mediapipe.tasks.python import vision
 from backend.gestures.gesture_engine import detect_gesture
 from backend.gestures.gesture_smoother import GestureSmoother
 from backend.interaction.controller import SpatialInteractionController
+from backend.interaction.event_detector import EventDetector
 from backend.vision.camera_manager import CameraManager
 
 logging.basicConfig(level=logging.INFO)
@@ -73,6 +75,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
     smoother = GestureSmoother(window_size=5)
     controller = SpatialInteractionController()
+    event_detector = EventDetector(
+        click_window=12,
+        double_click_window=40,
+    )
     timestamp = 0
 
     logger.info("WebSocket client connected")
@@ -118,6 +124,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     hand_y=index_tip.y,
                 )
 
+                events = event_detector.process(
+                    gesture=gesture,
+                    controller=controller,
+                    hand_x=index_tip.x,
+                    hand_y=index_tip.y,
+                )
+
                 payload = {
                     "hand_x": index_tip.x,
                     "hand_y": index_tip.y,
@@ -125,6 +138,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     "sphere_x": interaction.sphere_position.x,
                     "sphere_y": interaction.sphere_position.y,
                     "interaction_state": interaction.interaction_state,
+                    "events": [
+                        {
+                            "type": ev.event_type.value,
+                            "timestamp": ev.timestamp,
+                        }
+                        for ev in events
+                    ],
                 }
 
             else:
@@ -134,11 +154,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     gesture="NO_HAND",
                 )
 
+                events = event_detector.process(
+                    gesture="NO_HAND",
+                    controller=controller,
+                )
+
                 payload = {
                     "gesture": "NO_HAND",
                     "sphere_x": interaction.sphere_position.x,
                     "sphere_y": interaction.sphere_position.y,
                     "interaction_state": interaction.interaction_state,
+                    "events": [
+                        {
+                            "type": ev.event_type.value,
+                            "timestamp": ev.timestamp,
+                        }
+                        for ev in events
+                    ],
                 }
 
             await websocket.send_text(json.dumps(payload))

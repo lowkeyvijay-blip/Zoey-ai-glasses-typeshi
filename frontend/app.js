@@ -114,6 +114,21 @@ const gestureElement =
 const interactionElement =
     document.getElementById("interaction");
 
+const eventsElement =
+    document.getElementById("events");
+
+
+// ─────────────────────────────────────────────
+// Color palette for interaction states
+// ─────────────────────────────────────────────
+
+const COLOR_IDLE = 0x00aaff;
+const COLOR_GRABBED = 0x00ffcc;
+const COLOR_FLASH = 0xffff00;
+
+let flashTimer = 0;
+const FLASH_DURATION = 8;
+
 
 // ─────────────────────────────────────────────
 // Authoritative state from backend
@@ -185,7 +200,6 @@ function connect() {
 
 
         // Backend-authoritative sphere position.
-        // Backend sends world-space coordinates directly.
 
         if (
             data.sphere_x !== undefined &&
@@ -194,6 +208,36 @@ function connect() {
 
             targetX = data.sphere_x;
             targetY = data.sphere_y;
+        }
+
+
+        // Interaction events
+
+        if (data.events && data.events.length > 0) {
+
+            const names = data.events.map(
+                (e) => e.type
+            );
+
+            eventsElement.textContent =
+                `Events: ${names.join(", ")}`;
+
+            // Flash on CLICK or DOUBLE_CLICK
+
+            const hasClick = data.events.some(
+                (e) =>
+                    e.type === "CLICK" ||
+                    e.type === "DOUBLE_CLICK"
+            );
+
+            if (hasClick) {
+                flashTimer = FLASH_DURATION;
+            }
+
+        } else {
+
+            eventsElement.textContent =
+                "Events: —";
         }
     };
 }
@@ -218,6 +262,26 @@ function animate() {
 
     sphere.position.y +=
         (targetY - sphere.position.y) * 0.15;
+
+
+    // Sphere color feedback:
+    //   - IDLE: blue
+    //   - GRABBED: cyan-green
+    //   - Flash (click): brief yellow override
+
+    if (flashTimer > 0) {
+
+        sphere.material.color.setHex(COLOR_FLASH);
+        flashTimer--;
+
+    } else if (interactionState === "GRABBED") {
+
+        sphere.material.color.setHex(COLOR_GRABBED);
+
+    } else {
+
+        sphere.material.color.setHex(COLOR_IDLE);
+    }
 
 
     // Auto-rotate only when IDLE.
