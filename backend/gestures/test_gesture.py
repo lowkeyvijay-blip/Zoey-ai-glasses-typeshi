@@ -1,4 +1,4 @@
-from gesture_engine import detect_gesture
+from backend.gestures.gesture_engine import detect_gesture
 
 
 class Landmark:
