@@ -1038,3 +1038,152 @@ def test_old_controller_still_works():
     assert result.state == InteractionState.GRABBED
     result = ctrl.process_frame("OPEN_PALM", hand_x=0.5, hand_y=0.5)
     assert result.state == InteractionState.IDLE
+
+
+# ─────────────────────────────────────────────
+# V1.7: Z-axis / depth tests
+# ─────────────────────────────────────────────
+
+def test_initial_sphere_z_is_zero(two_hand):
+    result = two_hand.process_frame()
+    assert result.sphere_position.z == 0.0
+
+
+def test_left_hand_z_recorded(two_hand):
+    result = two_hand.process_frame(
+        left_gesture="POINT", left_x=0.4, left_y=0.6, left_z=-1.5
+    )
+    assert result.left_hand is not None
+    assert result.left_hand.z == -1.5
+
+
+def test_right_hand_z_recorded(two_hand):
+    result = two_hand.process_frame(
+        right_gesture="POINT", right_x=0.7, right_y=0.3, right_z=-2.0
+    )
+    assert result.right_hand is not None
+    assert result.right_hand.z == -2.0
+
+
+def test_hand_z_defaults_to_zero(two_hand):
+    result = two_hand.process_frame(
+        left_gesture="POINT", left_x=0.4, left_y=0.6
+    )
+    assert result.left_hand is not None
+    assert result.left_hand.z == 0.0
+
+
+def test_left_sphere_follows_hand_z(two_hand):
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.5, left_y=0.5, left_z=-1.0
+    )
+    result = two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.6, left_y=0.4, left_z=-2.0
+    )
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_right_sphere_follows_hand_z(two_hand):
+    two_hand.process_frame(
+        right_gesture="PINCH", right_x=0.5, right_y=0.5, right_z=-1.0
+    )
+    result = two_hand.process_frame(
+        right_gesture="PINCH", right_x=0.7, right_y=0.3, right_z=-2.0
+    )
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_two_hand_z_follows_midpoint(two_hand):
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.3, left_y=0.5, left_z=-1.0,
+        right_gesture="PINCH", right_x=0.7, right_y=0.5, right_z=-3.0,
+    )
+    result = two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.4, left_y=0.4, left_z=-2.0,
+        right_gesture="PINCH", right_x=0.8, right_y=0.6, right_z=-4.0,
+    )
+    # midpoint_z = (-2.0 + -4.0) / 2 = -3.0
+    # offset_z = 0.0 - (-2.0) = 2.0 (initial midpoint_z = (-1+-3)/2 = -2.0)
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_two_hand_z_from_nonzero_position(two_hand):
+    two_hand._sphere.z = 5.0
+    result = two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.3, left_y=0.5, left_z=-1.0,
+        right_gesture="PINCH", right_x=0.7, right_y=0.5, right_z=-3.0,
+    )
+    # midpoint_z = -2.0, offset_z = 5.0 - (-2.0) = 7.0
+    assert result.sphere_position.z == pytest.approx(5.0)
+
+
+def test_freeze_preserves_z_in_single_hand(two_hand):
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.5, left_y=0.5, left_z=-1.0
+    )
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.6, left_y=0.4, left_z=-2.0
+    )
+    result = two_hand.process_frame(
+        left_gesture="POINT", left_x=0.8, left_y=0.2, left_z=-5.0
+    )
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_two_hand_offset_z_captured(two_hand):
+    two_hand._sphere.z = 4.0
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.3, left_y=0.5, left_z=-1.0,
+        right_gesture="PINCH", right_x=0.7, right_y=0.5, right_z=-3.0,
+    )
+    assert two_hand._two_hand_offset.dz == pytest.approx(6.0)
+
+
+def test_left_grab_does_not_affect_right_z(two_hand):
+    """Left grabbing should not change right's z handling."""
+    two_hand.process_frame(
+        right_gesture="PINCH", right_x=0.7, right_y=0.3, right_z=-2.0
+    )
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.3, left_y=0.4, left_z=-1.0,
+        right_gesture="PINCH", right_x=0.7, right_y=0.4, right_z=-3.0,
+    )
+    assert two_hand._hands[HandLabel.RIGHT].hand is not None
+    assert two_hand._hands[HandLabel.RIGHT].hand.z == -3.0
+
+
+def test_single_hand_z_from_nonzero_sphere(two_hand):
+    two_hand._sphere.z = 3.0
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.5, left_y=0.5, left_z=-1.0
+    )
+    result = two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.6, left_y=0.4, left_z=-2.0
+    )
+    # offset.dz = 3.0 - (-1.0) = 4.0; sphere.z = -2.0 + 4.0 = 2.0
+    assert result.sphere_position.z == pytest.approx(2.0)
+
+
+def test_no_hand_releases_preserves_z(two_hand):
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.5, left_y=0.5, left_z=-1.0
+    )
+    two_hand.process_frame(
+        left_gesture="PINCH", left_x=0.6, left_y=0.4, left_z=-2.0
+    )
+    result = two_hand.process_frame(left_gesture="NO_HAND")
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_event_detector_captures_z(two_detector):
+    """TwoHandEventDetector events carry hand_z."""
+    ctrl = TwoHandController()
+    result = ctrl.process_frame(
+        left_gesture="PINCH", left_x=0.3, left_y=0.5, left_z=-1.5,
+    )
+    events = two_detector.process(
+        result, left_gesture="PINCH",
+    )
+    grabs = [e for e in events if e.event_type == EventType.GRAB]
+    assert len(grabs) == 1
+    assert grabs[0].hand_z == -1.5

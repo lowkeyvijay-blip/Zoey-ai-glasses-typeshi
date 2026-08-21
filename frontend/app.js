@@ -102,6 +102,33 @@ scene.add(grid);
 
 
 // ─────────────────────────────────────────────
+// Shadow disc (V1.7) — follows sphere XZ
+// ─────────────────────────────────────────────
+
+const shadowGeometry = new THREE.CircleGeometry(
+    0.5,
+    32
+);
+
+const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00aaff,
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.DoubleSide,
+});
+
+const shadowDisc = new THREE.Mesh(
+    shadowGeometry,
+    shadowMaterial
+);
+
+shadowDisc.rotation.x = -Math.PI / 2;
+shadowDisc.position.y = -1.19;
+
+scene.add(shadowDisc);
+
+
+// ─────────────────────────────────────────────
 // Hand cursors (V1.6)
 // ─────────────────────────────────────────────
 
@@ -147,6 +174,9 @@ const interactionElement =
 const eventsElement =
     document.getElementById("events");
 
+const depthElement =
+    document.getElementById("depth");
+
 
 // ─────────────────────────────────────────────
 // Color palette for interaction states
@@ -167,6 +197,7 @@ const FLASH_DURATION = 8;
 
 let targetX = 0;
 let targetY = 0;
+let targetZ = 0;
 let targetScale = 1.0;
 let targetRotation = 0;
 let interactionState = "IDLE";
@@ -249,6 +280,10 @@ function connect() {
 
             targetX = data.sphere_x;
             targetY = data.sphere_y;
+        }
+
+        if (data.sphere_z !== undefined) {
+            targetZ = data.sphere_z;
         }
 
         if (data.sphere_scale !== undefined) {
@@ -336,6 +371,9 @@ function animate() {
     sphere.position.y +=
         (targetY - sphere.position.y) * 0.15;
 
+    sphere.position.z +=
+        (targetZ - sphere.position.z) * 0.15;
+
     // Interpolate scale
 
     const currentScale = sphere.scale.x;
@@ -391,12 +429,29 @@ function animate() {
     if (leftHandPos) {
         leftCursor.position.x = (leftHandPos.x - 0.5) * 6;
         leftCursor.position.y = -(leftHandPos.y - 0.5) * 4;
+        leftCursor.position.z = leftHandPos.z || 0;
     }
 
     if (rightHandPos) {
         rightCursor.position.x = (rightHandPos.x - 0.5) * 6;
         rightCursor.position.y = -(rightHandPos.y - 0.5) * 4;
+        rightCursor.position.z = rightHandPos.z || 0;
     }
+
+
+    // Shadow disc follows sphere XZ on the ground plane
+
+    shadowDisc.position.x = sphere.position.x;
+    shadowDisc.position.z = sphere.position.z;
+
+    const shadowOpacity = 0.08 + Math.abs(sphere.position.z) * 0.04;
+    shadowMaterial.opacity = Math.min(0.3, shadowOpacity);
+
+    const shadowScale = 0.5 + Math.abs(sphere.position.z) * 0.25;
+    shadowDisc.scale.set(shadowScale, shadowScale, 1);
+
+    depthElement.textContent =
+        `Depth: ${sphere.position.z.toFixed(2)}`;
 
 
     renderer.render(

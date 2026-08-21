@@ -19,6 +19,13 @@ V1.6: Two-hand interaction.
   - Distance between hands drives scale
   - Angle between hands drives rotation
   - One hand disappearing never corrupts the other hand's state
+
+V1.7: True 3D interaction.
+  - HandPosition now carries z (depth) from MediaPipe
+  - Sphere position extends to (x, y, z) in world space
+  - GrabOffset captures z at grab time to prevent z-jump
+  - MediaPipe z is mapped to world Z via DEPTH_SCALE (in main.py)
+  - All z parameters default to 0.0 / None so V1.4-V1.6 tests pass unchanged
 """
 
 from __future__ import annotations
@@ -41,9 +48,15 @@ class HandLabel(Enum):
 
 @dataclass
 class HandPosition:
-    """Normalized camera-space hand position."""
+    """Normalized camera-space hand position.
+
+    x, y are MediaPipe normalised coords [0, 1].
+    z is the world-space depth AFTER scaling by DEPTH_SCALE
+    in main.py (range ≈ [-2, +2] with default scale).
+    """
     x: float
     y: float
+    z: float = 0.0
 
 
 @dataclass
@@ -51,6 +64,7 @@ class SphereState:
     """Authoritative sphere position in world space."""
     x: float = 0.0
     y: float = 0.0
+    z: float = 0.0
 
 
 @dataclass
@@ -59,6 +73,7 @@ class GrabOffset:
     Prevents the sphere from jumping when first grabbed."""
     dx: float = 0.0
     dy: float = 0.0
+    dz: float = 0.0
 
 
 @dataclass
@@ -96,6 +111,7 @@ class SpatialInteractionController:
         gesture: str,
         hand_x: Optional[float] = None,
         hand_y: Optional[float] = None,
+        hand_z: Optional[float] = None,
     ) -> InteractionResult:
         """Process one frame of gesture + hand position data.
 
@@ -105,6 +121,8 @@ class SpatialInteractionController:
                      RELAXED, UNKNOWN, NO_HAND
             hand_x: Normalized hand X position (0-1). None if no hand.
             hand_y: Normalized hand Y position (0-1). None if no hand.
+            hand_z: World-space hand Z position. None if no hand.
+                    Defaults to 0.0 when absent (V1.4-V1.6 compat).
 
         Returns:
             InteractionResult with current state and sphere position.
@@ -115,10 +133,13 @@ class SpatialInteractionController:
             and hand_y is not None
         )
 
+        hz = hand_z if hand_z is not None else 0.0
+
         if has_hand:
             self._hand = HandPosition(
                 x=hand_x,
                 y=hand_y,
+                z=hz,
             )
         else:
             self._hand = None
@@ -137,7 +158,7 @@ class SpatialInteractionController:
             and self._state == InteractionState.IDLE
             and has_hand
         ):
-            self._grab(hand_x, hand_y)
+            self._grab(hand_x, hand_y, hz)
             return self._result()
 
         # ── PINCH while GRABBED: follow ──
@@ -149,6 +170,7 @@ class SpatialInteractionController:
         ):
             self._sphere.x = hand_x + self._offset.dx
             self._sphere.y = hand_y + self._offset.dy
+            self._sphere.z = hz + self._offset.dz
             return self._result()
 
         # ── OPEN_PALM while GRABBED: release ──
@@ -166,10 +188,11 @@ class SpatialInteractionController:
 
         return self._result()
 
-    def _grab(self, hand_x: float, hand_y: float) -> None:
+    def _grab(self, hand_x: float, hand_y: float, hand_z: float = 0.0) -> None:
         """Enter GRABBED state. Capture offset to prevent jump."""
         self._offset.dx = self._sphere.x - hand_x
         self._offset.dy = self._sphere.y - hand_y
+        self._offset.dz = self._sphere.z - hand_z
         self._state = InteractionState.GRABBED
 
     def _release(self) -> None:
@@ -183,11 +206,13 @@ class SpatialInteractionController:
             sphere_position=SphereState(
                 x=self._sphere.x,
                 y=self._sphere.y,
+                z=self._sphere.z,
             ),
             hand_position=(
                 HandPosition(
                     x=self._hand.x,
                     y=self._hand.y,
+                    z=self._hand.z,
                 )
                 if self._hand
                 else None
@@ -206,6 +231,7 @@ class SphereStateExtended:
     """Extended sphere state with scale and rotation."""
     x: float = 0.0
     y: float = 0.0
+    z: float = 0.0
     scale: float = 1.0
     rotation: float = 0.0
 
@@ -268,22 +294,26 @@ class TwoHandController:
         left_gesture: str = "NO_HAND",
         left_x: Optional[float] = None,
         left_y: Optional[float] = None,
+        left_z: Optional[float] = None,
         right_gesture: str = "NO_HAND",
         right_x: Optional[float] = None,
         right_y: Optional[float] = None,
+        right_z: Optional[float] = None,
     ) -> TwoHandResult:
         """Process one frame of multi-hand gesture data.
 
         Each hand is processed independently. Then the combined
         sphere state is computed based on how many hands are grabbing.
+
+        z parameters default to None (treated as 0.0) for V1.4-V1.6 compat.
         """
         # ── Process each hand independently ──
 
         self._process_hand(
-            HandLabel.LEFT, left_gesture, left_x, left_y
+            HandLabel.LEFT, left_gesture, left_x, left_y, left_z
         )
         self._process_hand(
-            HandLabel.RIGHT, right_gesture, right_x, right_y
+            HandLabel.RIGHT, right_gesture, right_x, right_y, right_z
         )
 
         # ── Compute combined sphere state ──
@@ -312,13 +342,15 @@ class TwoHandController:
         gesture: str,
         hand_x: Optional[float],
         hand_y: Optional[float],
+        hand_z: Optional[float] = None,
     ) -> None:
         """Process one hand independently (V1.4 logic)."""
         hand = self._hands[label]
         has_hand = hand_x is not None and hand_y is not None
+        hz = hand_z if hand_z is not None else 0.0
 
         if has_hand:
-            hand.hand = HandPosition(x=hand_x, y=hand_y)
+            hand.hand = HandPosition(x=hand_x, y=hand_y, z=hz)
         else:
             hand.hand = None
 
@@ -337,7 +369,7 @@ class TwoHandController:
             and hand.state == InteractionState.IDLE
             and has_hand
         ):
-            self._grab_hand(hand, hand_x, hand_y)
+            self._grab_hand(hand, hand_x, hand_y, hz)
             return
 
         # ── PINCH while GRABBED: follow ──
@@ -366,11 +398,13 @@ class TwoHandController:
             hand.frozen = True
 
     def _grab_hand(
-        self, hand: PerHandState, hand_x: float, hand_y: float
+        self, hand: PerHandState, hand_x: float, hand_y: float,
+        hand_z: float = 0.0,
     ) -> None:
         """Enter GRABBED state for a single hand."""
         hand.offset.dx = self._sphere.x - hand_x
         hand.offset.dy = self._sphere.y - hand_y
+        hand.offset.dz = self._sphere.z - hand_z
         hand.state = InteractionState.GRABBED
 
     def _update_single_hand(self, hand: PerHandState) -> None:
@@ -384,12 +418,14 @@ class TwoHandController:
             if hand.hand is not None:
                 hand.offset.dx = self._sphere.x - hand.hand.x
                 hand.offset.dy = self._sphere.y - hand.hand.y
+                hand.offset.dz = self._sphere.z - hand.hand.z
             self._reset_two_hand_tracking()
             self._was_two_hand = False
 
         if not hand.frozen and hand.hand is not None:
             self._sphere.x = hand.hand.x + hand.offset.dx
             self._sphere.y = hand.hand.y + hand.offset.dy
+            self._sphere.z = hand.hand.z + hand.offset.dz
 
     def _update_two_hand(self) -> None:
         """Update sphere for two-hand cooperative grab.
@@ -406,8 +442,10 @@ class TwoHandController:
 
         lx = left.hand.x if left.hand else 0.0
         ly = left.hand.y if left.hand else 0.0
+        lz = left.hand.z if left.hand else 0.0
         rx = right.hand.x if right.hand else 0.0
         ry = right.hand.y if right.hand else 0.0
+        rz = right.hand.z if right.hand else 0.0
 
         # When one hand is frozen, use the midpoint that
         # accounts for the frozen hand staying put.
@@ -415,12 +453,15 @@ class TwoHandController:
         if left.frozen:
             midpoint_x = rx
             midpoint_y = ry
+            midpoint_z = rz
         elif right.frozen:
             midpoint_x = lx
             midpoint_y = ly
+            midpoint_z = lz
         else:
             midpoint_x = (lx + rx) / 2.0
             midpoint_y = (ly + ry) / 2.0
+            midpoint_z = (lz + rz) / 2.0
 
         current_distance = math.sqrt(
             (rx - lx) ** 2 + (ry - ly) ** 2
@@ -430,11 +471,13 @@ class TwoHandController:
         if self._initial_distance is None:
             self._two_hand_offset.dx = self._sphere.x - midpoint_x
             self._two_hand_offset.dy = self._sphere.y - midpoint_y
+            self._two_hand_offset.dz = self._sphere.z - midpoint_z
             self._initial_distance = current_distance
             self._initial_angle = current_angle
 
         self._sphere.x = midpoint_x + self._two_hand_offset.dx
         self._sphere.y = midpoint_y + self._two_hand_offset.dy
+        self._sphere.z = midpoint_z + self._two_hand_offset.dz
 
         # Scale: ratio of current to initial distance
         if self._initial_distance > 1e-6:
@@ -479,6 +522,7 @@ class TwoHandController:
             sphere_position=SphereStateExtended(
                 x=self._sphere.x,
                 y=self._sphere.y,
+                z=self._sphere.z,
                 scale=self._sphere.scale,
                 rotation=self._sphere.rotation,
             ),
@@ -486,12 +530,16 @@ class TwoHandController:
             left_state=left.state,
             right_state=right.state,
             left_hand=(
-                HandPosition(x=left.hand.x, y=left.hand.y)
+                HandPosition(
+                    x=left.hand.x, y=left.hand.y, z=left.hand.z
+                )
                 if left.hand
                 else None
             ),
             right_hand=(
-                HandPosition(x=right.hand.x, y=right.hand.y)
+                HandPosition(
+                    x=right.hand.x, y=right.hand.y, z=right.hand.z
+                )
                 if right.hand
                 else None
             ),

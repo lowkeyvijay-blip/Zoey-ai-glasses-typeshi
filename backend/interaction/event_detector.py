@@ -1,4 +1,4 @@
-"""Interaction event detector for V1.5/V1.6.
+"""Interaction event detector for V1.5-V1.7.
 
 Observes the controller's state transitions and gesture inputs
 to emit typed InteractionEvents. Does NOT modify the controller
@@ -11,6 +11,7 @@ Detects:
   - FREEZE / RESUME (non-PINCH while grabbed)
 
 V1.6: TwoHandEventDetector for per-hand event tracking.
+V1.7: Events now carry hand_z for depth-aware positions.
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ class EventDetector:
         controller: SpatialInteractionController,
         hand_x: Optional[float] = None,
         hand_y: Optional[float] = None,
+        hand_z: Optional[float] = None,
     ) -> List[InteractionEvent]:
         """Process one frame and return any events detected.
 
@@ -73,6 +75,7 @@ class EventDetector:
             controller: The interaction controller (to read state).
             hand_x: Normalized hand X. None if no hand.
             hand_y: Normalized hand Y. None if no hand.
+            hand_z: World-space hand Z (V1.7). None if no hand.
 
         Returns:
             List of events detected in this frame (may be empty).
@@ -82,6 +85,7 @@ class EventDetector:
         current_state = controller.state
         hx = hand_x if hand_x is not None else 0.0
         hy = hand_y if hand_y is not None else 0.0
+        hz = hand_z if hand_z is not None else 0.0
 
         is_grabbed = current_state == InteractionState.GRABBED
         is_idle = current_state == InteractionState.IDLE
@@ -95,6 +99,7 @@ class EventDetector:
                     timestamp=self._frame,
                     hand_x=hx,
                     hand_y=hy,
+                    hand_z=hz,
                 )
             )
             self._grab_start_frame = self._frame
@@ -108,6 +113,7 @@ class EventDetector:
                     timestamp=self._frame,
                     hand_x=hx,
                     hand_y=hy,
+                    hand_z=hz,
                 )
             )
 
@@ -125,6 +131,7 @@ class EventDetector:
                             timestamp=self._frame,
                             hand_x=hx,
                             hand_y=hy,
+                            hand_z=hz,
                         )
                     )
 
@@ -143,6 +150,7 @@ class EventDetector:
                                 timestamp=self._frame,
                                 hand_x=hx,
                                 hand_y=hy,
+                                hand_z=hz,
                             )
                         )
 
@@ -163,6 +171,7 @@ class EventDetector:
                     timestamp=self._frame,
                     hand_x=hx,
                     hand_y=hy,
+                    hand_z=hz,
                 )
             )
 
@@ -177,6 +186,7 @@ class EventDetector:
                     timestamp=self._frame,
                     hand_x=hx,
                     hand_y=hy,
+                    hand_z=hz,
                 )
             )
 
@@ -272,6 +282,7 @@ class TwoHandEventDetector:
 
             hx = hand.x if hand else 0.0
             hy = hand.y if hand else 0.0
+            hz = hand.z if hand else 0.0
 
             is_grabbed = current_state == InteractionState.GRABBED
             is_idle = current_state == InteractionState.IDLE
@@ -285,6 +296,7 @@ class TwoHandEventDetector:
                         timestamp=self._frame,
                         hand_x=hx,
                         hand_y=hy,
+                        hand_z=hz,
                         hand_label=label,
                     )
                 )
@@ -299,6 +311,7 @@ class TwoHandEventDetector:
                         timestamp=self._frame,
                         hand_x=hx,
                         hand_y=hy,
+                        hand_z=hz,
                         hand_label=label,
                     )
                 )
@@ -317,6 +330,7 @@ class TwoHandEventDetector:
                                 timestamp=self._frame,
                                 hand_x=hx,
                                 hand_y=hy,
+                                hand_z=hz,
                                 hand_label=label,
                             )
                         )
@@ -336,6 +350,7 @@ class TwoHandEventDetector:
                                     timestamp=self._frame,
                                     hand_x=hx,
                                     hand_y=hy,
+                                    hand_z=hz,
                                     hand_label=label,
                                 )
                             )
@@ -357,6 +372,7 @@ class TwoHandEventDetector:
                         timestamp=self._frame,
                         hand_x=hx,
                         hand_y=hy,
+                        hand_z=hz,
                         hand_label=label,
                     )
                 )
@@ -372,6 +388,7 @@ class TwoHandEventDetector:
                         timestamp=self._frame,
                         hand_x=hx,
                         hand_y=hy,
+                        hand_z=hz,
                         hand_label=label,
                     )
                 )

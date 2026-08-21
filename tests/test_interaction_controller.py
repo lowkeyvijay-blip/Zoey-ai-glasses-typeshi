@@ -437,3 +437,86 @@ def test_freeze_prevents_movement_across_multiple_frames(controller):
     assert result.state == InteractionState.GRABBED
     assert result.sphere_position.x == pytest.approx(0.1)
     assert result.sphere_position.y == pytest.approx(-0.1)
+
+
+# ─────────────────────────────────────────────
+# V1.7: Z-axis / depth tests
+# ─────────────────────────────────────────────
+
+def test_initial_sphere_z_is_zero(controller):
+    result = controller.process_frame("UNKNOWN")
+    assert result.sphere_position.z == 0.0
+
+
+def test_hand_position_z_recorded(controller):
+    result = controller.process_frame(
+        "POINT", hand_x=0.4, hand_y=0.6, hand_z=-1.5
+    )
+    assert result.hand_position is not None
+    assert result.hand_position.z == -1.5
+
+
+def test_hand_position_z_default_zero(controller):
+    """hand_z not provided -> defaults to 0.0."""
+    result = controller.process_frame(
+        "POINT", hand_x=0.4, hand_y=0.6
+    )
+    assert result.hand_position is not None
+    assert result.hand_position.z == 0.0
+
+
+def test_sphere_stays_at_z_on_grab(controller):
+    """Sphere should NOT jump in Z on grab."""
+    controller._sphere.z = 2.0
+    result = controller.process_frame(
+        "PINCH", hand_x=0.3, hand_y=0.4, hand_z=-1.0
+    )
+    assert result.sphere_position.z == pytest.approx(2.0)
+
+
+def test_offset_captured_z(controller):
+    controller._sphere.z = 3.0
+    controller.process_frame("PINCH", hand_x=0.2, hand_y=0.1, hand_z=-0.5)
+    assert controller._offset.dz == pytest.approx(3.5)
+
+
+def test_sphere_follows_hand_z(controller):
+    """After grab, sphere.z = hand_z + offset.dz."""
+    controller.process_frame("PINCH", hand_x=0.5, hand_y=0.5, hand_z=-1.0)
+    result = controller.process_frame(
+        "PINCH", hand_x=0.6, hand_y=0.4, hand_z=-2.0
+    )
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_freeze_preserves_z(controller):
+    controller.process_frame("PINCH", hand_x=0.5, hand_y=0.5, hand_z=-1.0)
+    controller.process_frame("PINCH", hand_x=0.6, hand_y=0.4, hand_z=-2.0)
+    result = controller.process_frame("FIST", hand_x=0.8, hand_y=0.2, hand_z=-3.0)
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_no_hand_preserves_z(controller):
+    controller.process_frame("PINCH", hand_x=0.5, hand_y=0.5, hand_z=-1.0)
+    controller.process_frame("PINCH", hand_x=0.6, hand_y=0.4, hand_z=-2.0)
+    result = controller.process_frame("NO_HAND")
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_release_preserves_z(controller):
+    controller.process_frame("PINCH", hand_x=0.5, hand_y=0.5, hand_z=-1.0)
+    controller.process_frame("PINCH", hand_x=0.6, hand_y=0.4, hand_z=-2.0)
+    result = controller.process_frame("OPEN_PALM", hand_x=0.6, hand_y=0.4, hand_z=-2.0)
+    assert result.sphere_position.z == pytest.approx(-1.0)
+
+
+def test_grab_from_nonzero_z_then_move(controller):
+    controller._sphere.x = 1.0
+    controller._sphere.y = 0.5
+    controller._sphere.z = 3.0
+
+    controller.process_frame("PINCH", hand_x=0.5, hand_y=0.3, hand_z=-0.5)
+    # offset.dz = 3.0 - (-0.5) = 3.5
+
+    result = controller.process_frame("PINCH", hand_x=0.8, hand_y=0.6, hand_z=-1.0)
+    assert result.sphere_position.z == pytest.approx(2.5)
