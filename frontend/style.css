@@ -30,7 +30,8 @@ canvas {
 #status,
 #gesture,
 #interaction,
-#events {
+#events,
+#depth {
     margin-top: 8px;
     font-size: 14px;
     opacity: 0.8;

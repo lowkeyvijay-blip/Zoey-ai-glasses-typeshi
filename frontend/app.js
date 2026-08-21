@@ -64,30 +64,6 @@ scene.add(directionalLight);
 
 
 // ─────────────────────────────────────────────
-// Sphere
-// ─────────────────────────────────────────────
-
-const geometry = new THREE.SphereGeometry(
-    0.7,
-    64,
-    64
-);
-
-const material = new THREE.MeshStandardMaterial({
-    color: 0x00aaff,
-    roughness: 0.25,
-    metalness: 0.4
-});
-
-const sphere = new THREE.Mesh(
-    geometry,
-    material
-);
-
-scene.add(sphere);
-
-
-// ─────────────────────────────────────────────
 // Grid
 // ─────────────────────────────────────────────
 
@@ -102,7 +78,7 @@ scene.add(grid);
 
 
 // ─────────────────────────────────────────────
-// Shadow disc (V1.7) — follows sphere XZ
+// Shadow disc (V1.7)
 // ─────────────────────────────────────────────
 
 const shadowGeometry = new THREE.CircleGeometry(
@@ -126,6 +102,30 @@ shadowDisc.rotation.x = -Math.PI / 2;
 shadowDisc.position.y = -1.19;
 
 scene.add(shadowDisc);
+
+
+// ─────────────────────────────────────────────
+// Primary sphere (V1.4 legacy)
+// ─────────────────────────────────────────────
+
+const geometry = new THREE.SphereGeometry(
+    0.7,
+    64,
+    64
+);
+
+const material = new THREE.MeshStandardMaterial({
+    color: 0x00aaff,
+    roughness: 0.25,
+    metalness: 0.4
+});
+
+const sphere = new THREE.Mesh(
+    geometry,
+    material
+);
+
+scene.add(sphere);
 
 
 // ─────────────────────────────────────────────
@@ -209,10 +209,288 @@ let rightState = "IDLE";
 
 
 // ─────────────────────────────────────────────
+// V1.8: Scene object registry (frontend)
+// ─────────────────────────────────────────────
+
+const sceneObjects = {};
+const objectMeshes = {};
+
+
+function createObjectMesh(objData) {
+    const type = objData.type;
+
+    if (type === "SPHERE") {
+        const geo = new THREE.SphereGeometry(0.7, 32, 32);
+        const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(objData.color),
+            roughness: 0.25,
+            metalness: 0.4,
+        });
+        return new THREE.Mesh(geo, mat);
+    }
+
+    if (type === "PANEL") {
+        const w = (objData.width || 2.0) * 0.5;
+        const h = (objData.height || 1.2) * 0.5;
+        const geo = new THREE.BoxGeometry(w, h, 0.04);
+        const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(objData.color),
+            roughness: 0.6,
+            metalness: 0.1,
+            transparent: true,
+            opacity: objData.opacity || 0.85,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        if (objData.label) {
+            const canvas = document.createElement("canvas");
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "rgba(0,0,0,0)";
+            ctx.fillRect(0, 0, 256, 128);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 24px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(objData.label, 128, 64);
+            const tex = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                side: THREE.DoubleSide,
+            });
+            const labelGeo = new THREE.PlaneGeometry(w * 0.9, h * 0.5);
+            const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+            labelMesh.position.z = 0.025;
+            mesh.add(labelMesh);
+        }
+        return mesh;
+    }
+
+    if (type === "BUTTON") {
+        const w = (objData.width || 0.6) * 0.5;
+        const h = (objData.height || 0.3) * 0.5;
+        const geo = new THREE.BoxGeometry(w, h, 0.08);
+        const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(objData.color),
+            roughness: 0.3,
+            metalness: 0.3,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        if (objData.label) {
+            const canvas = document.createElement("canvas");
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 20px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(objData.label, 64, 32);
+            const tex = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                side: THREE.DoubleSide,
+            });
+            const labelGeo = new THREE.PlaneGeometry(w * 0.8, h * 0.6);
+            const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+            labelMesh.position.z = 0.045;
+            mesh.add(labelMesh);
+        }
+        return mesh;
+    }
+
+    if (type === "CARD") {
+        const w = (objData.width || 1.0) * 0.5;
+        const h = (objData.height || 0.7) * 0.5;
+        const geo = new THREE.BoxGeometry(w, h, 0.03);
+        const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(objData.color),
+            roughness: 0.5,
+            metalness: 0.1,
+            transparent: true,
+            opacity: objData.opacity || 0.9,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        if (objData.label) {
+            const canvas = document.createElement("canvas");
+            canvas.width = 256;
+            canvas.height = 180;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 20px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText(objData.label, 128, 20);
+            ctx.font = "14px Arial";
+            ctx.fillStyle = "#aaaaaa";
+            ctx.fillText("V2.0 Spatial UI", 128, 55);
+            ctx.fillText("Drag to interact", 128, 80);
+            const tex = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                side: THREE.DoubleSide,
+            });
+            const labelGeo = new THREE.PlaneGeometry(w * 0.9, h * 0.8);
+            const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+            labelMesh.position.z = 0.02;
+            mesh.add(labelMesh);
+        }
+        return mesh;
+    }
+
+    return null;
+}
+
+
+const STATE_COLORS = {
+    "DEFAULT": null,
+    "HOVERED": 0x4488ff,
+    "SELECTED": 0xffff44,
+    "GRABBED": 0x00ffcc,
+};
+
+const STATE_EMISSIVE = {
+    "DEFAULT": 0x000000,
+    "HOVERED": 0x112244,
+    "SELECTED": 0x333300,
+    "GRABBED": 0x003322,
+};
+
+
+function updateObjectVisuals(mesh, objData) {
+    if (!mesh || !mesh.material) return;
+    const state = objData.state || "DEFAULT";
+
+    if (mesh.material.color) {
+        const baseColor = new THREE.Color(objData.color);
+        const stateColor = STATE_COLORS[state];
+        if (stateColor !== null) {
+            const highlightColor = new THREE.Color(stateColor);
+            mesh.material.color.copy(baseColor).lerp(highlightColor, 0.3);
+        } else {
+            mesh.material.color.copy(baseColor);
+        }
+    }
+
+    if (mesh.material.emissive) {
+        mesh.material.emissive.setHex(STATE_EMISSIVE[state] || 0x000000);
+    }
+
+    const isHovered = state === "HOVERED";
+    const isSelected = state === "SELECTED";
+    const isGrabbed = state === "GRABBED";
+    mesh.scale.setScalar(isHovered ? 1.05 : (isGrabbed ? 0.95 : 1.0));
+}
+
+
+function syncSceneObjects(sceneData) {
+    if (!sceneData || !sceneData.objects) return;
+
+    const activeIds = new Set();
+
+    for (const objData of sceneData.objects) {
+        const id = objData.id;
+        activeIds.add(id);
+
+        if (objData.type === "SPHERE" && id === "sphere") {
+            continue;
+        }
+
+        if (!objectMeshes[id]) {
+            const mesh = createObjectMesh(objData);
+            if (mesh) {
+                mesh.position.set(objData.x, objData.y, objData.z);
+                scene.add(mesh);
+                objectMeshes[id] = mesh;
+            }
+        }
+
+        const mesh = objectMeshes[id];
+        if (mesh) {
+            mesh.position.x += (objData.x - mesh.position.x) * 0.15;
+            mesh.position.y += (objData.y - mesh.position.y) * 0.15;
+            mesh.position.z += (objData.z - mesh.position.z) * 0.15;
+
+            if (objData.type !== "SPHERE") {
+                mesh.rotation.z +=
+                    (objData.rotation - mesh.rotation.z) * 0.15;
+            }
+
+            updateObjectVisuals(mesh, objData);
+        }
+    }
+
+    for (const id of Object.keys(objectMeshes)) {
+        if (!activeIds.has(id)) {
+            scene.remove(objectMeshes[id]);
+            delete objectMeshes[id];
+        }
+    }
+}
+
+
+// ─────────────────────────────────────────────
+// Spatial cursors (V1.8)
+// ─────────────────────────────────────────────
+
+const spatialCursorGeometry = new THREE.SphereGeometry(
+    0.04,
+    12,
+    12
+);
+
+const spatialCursorMaterials = {
+    "LEFT": new THREE.MeshStandardMaterial({
+        color: 0xff6666,
+        roughness: 0.4,
+        emissive: 0x220000,
+    }),
+    "RIGHT": new THREE.MeshStandardMaterial({
+        color: 0x6666ff,
+        roughness: 0.4,
+        emissive: 0x000022,
+    }),
+};
+
+const spatialCursors = {};
+
+function syncSpatialCursors(cursorsData) {
+    if (!cursorsData) return;
+
+    for (const [label, cdata] of Object.entries(cursorsData)) {
+        if (!spatialCursors[label]) {
+            const mat = spatialCursorMaterials[label] || spatialCursorMaterials["LEFT"];
+            spatialCursors[label] = new THREE.Mesh(
+                spatialCursorGeometry, mat.clone()
+            );
+            scene.add(spatialCursors[label]);
+        }
+        const cursor = spatialCursors[label];
+        if (cdata.active) {
+            cursor.visible = true;
+            cursor.position.x = (cdata.x - 0.5) * 6;
+            cursor.position.y = -(cdata.y - 0.5) * 4;
+            cursor.position.z = cdata.z || 0;
+        } else {
+            cursor.visible = false;
+        }
+    }
+}
+
+
+// ─────────────────────────────────────────────
 // WebSocket
 // ─────────────────────────────────────────────
 
 let socket;
+
+const PROTOCOL_VERSION = "2.0";
 
 function connect() {
 
@@ -221,37 +499,42 @@ function connect() {
     );
 
     socket.onopen = () => {
-
-        statusElement.textContent =
-            "Vision connected";
+        statusElement.textContent = "Connected, handshaking...";
+        socket.send(JSON.stringify({
+            type: "handshake",
+            version: PROTOCOL_VERSION,
+            capabilities: ["state_update", "events", "intents"],
+        }));
     };
 
 
     socket.onclose = () => {
-
-        statusElement.textContent =
-            "Vision disconnected";
-
-        setTimeout(
-            connect,
-            1000
-        );
+        statusElement.textContent = "Disconnected, reconnecting...";
+        setTimeout(connect, 1000);
     };
 
 
     socket.onerror = () => {
-
-        statusElement.textContent =
-            "Connection error";
+        statusElement.textContent = "Connection error";
     };
 
 
     socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
 
-        const data =
-            JSON.parse(event.data);
+        if (data.type === "handshake_ack") {
+            statusElement.textContent = `Connected V${data.version}`;
+            return;
+        }
 
-        // Per-hand gesture display
+        if (data.type === "pong") {
+            return;
+        }
+
+        if (data.type === "error") {
+            console.warn("Server error:", data.error);
+            return;
+        }
 
         const parts = [];
         if (data.left_state && data.left_state !== "IDLE") {
@@ -270,8 +553,6 @@ function connect() {
                 `State: ${interactionState}` + (parts.length > 0 ? ` (${parts.join(", ")})` : "");
         }
 
-
-        // Backend-authoritative sphere position + scale + rotation
 
         if (
             data.sphere_x !== undefined &&
@@ -295,8 +576,6 @@ function connect() {
         }
 
 
-        // Hand cursors
-
         if (data.left_hand) {
             leftHandPos = data.left_hand;
             leftState = data.left_state;
@@ -316,8 +595,6 @@ function connect() {
         }
 
 
-        // Interaction events
-
         if (data.events && data.events.length > 0) {
 
             const names = data.events.map(
@@ -329,8 +606,6 @@ function connect() {
 
             eventsElement.textContent =
                 `Events: ${names.join(", ")}`;
-
-            // Flash on CLICK or DOUBLE_CLICK
 
             const hasClick = data.events.some(
                 (e) =>
@@ -347,10 +622,22 @@ function connect() {
             eventsElement.textContent =
                 "Events: —";
         }
+
+
+        if (data.scene) {
+            syncSceneObjects(data.scene);
+            syncSpatialCursors(data.scene.cursors);
+        }
     };
 }
 
 connect();
+
+setInterval(() => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "ping" }));
+    }
+}, 30000);
 
 
 // ─────────────────────────────────────────────
@@ -363,8 +650,6 @@ function animate() {
         animate
     );
 
-    // Interpolate toward backend-authoritative position
-
     sphere.position.x +=
         (targetX - sphere.position.x) * 0.15;
 
@@ -374,25 +659,15 @@ function animate() {
     sphere.position.z +=
         (targetZ - sphere.position.z) * 0.15;
 
-    // Interpolate scale
-
     const currentScale = sphere.scale.x;
     const newScale = currentScale + (targetScale - currentScale) * 0.15;
     sphere.scale.set(newScale, newScale, newScale);
-
-    // Apply two-hand rotation
 
     if (interactionState === "TWO_HAND") {
         sphere.rotation.z +=
             (targetRotation - sphere.rotation.z) * 0.15;
     }
 
-
-    // Sphere color feedback:
-    //   - IDLE: blue
-    //   - GRABBED: cyan-green
-    //   - TWO_HAND: orange
-    //   - Flash (click): brief yellow override
 
     if (flashTimer > 0) {
 
@@ -413,9 +688,6 @@ function animate() {
     }
 
 
-    // Auto-rotate only when IDLE.
-    // Stop rotation during GRABBED or TWO_HAND for stability.
-
     if (interactionState === "IDLE") {
 
         sphere.rotation.x += 0.003;
@@ -423,8 +695,6 @@ function animate() {
 
     }
 
-
-    // Hand cursors: map normalized coords to scene space
 
     if (leftHandPos) {
         leftCursor.position.x = (leftHandPos.x - 0.5) * 6;
@@ -438,8 +708,6 @@ function animate() {
         rightCursor.position.z = rightHandPos.z || 0;
     }
 
-
-    // Shadow disc follows sphere XZ on the ground plane
 
     shadowDisc.position.x = sphere.position.x;
     shadowDisc.position.z = sphere.position.z;
